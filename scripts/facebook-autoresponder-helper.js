@@ -165,123 +165,97 @@ function dashboardHtml() {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Facebook Bot Control Panel</title>
+  <title>Facebook Bot</title>
   <style>
     :root {
       color-scheme: dark;
-      --bg: #10130f;
-      --panel: #181d15;
-      --panel2: #20281b;
-      --ink: #f2f0dc;
-      --muted: #a9ad98;
-      --line: #3c432f;
-      --accent: #f2b84b;
-      --bad: #ff7469;
-      --good: #84d17d;
-      --blue: #88b7ff;
+      --bg: #0f1115;
+      --panel: #171a21;
+      --ink: #eef1f6;
+      --muted: #9299a8;
+      --line: #2b303a;
+      --accent: #f0aa3c;
+      --bad: #ff6b63;
+      --good: #72d487;
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      background:
-        radial-gradient(circle at top left, rgba(242, 184, 75, .16), transparent 32rem),
-        linear-gradient(135deg, #0c100d, #171b12 48%, #111510);
+      background: var(--bg);
       color: var(--ink);
       font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
-    header {
-      padding: 28px;
-      border-bottom: 1px solid var(--line);
-      background: rgba(16, 19, 15, .78);
-      position: sticky;
-      top: 0;
-      backdrop-filter: blur(12px);
-      z-index: 5;
-    }
-    h1 { margin: 0 0 8px; font-size: clamp(28px, 4vw, 48px); letter-spacing: -0.05em; }
-    .sub { color: var(--muted); }
-    main { padding: 24px; display: grid; gap: 18px; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+    main { width: min(1080px, calc(100% - 32px)); margin: 0 auto; padding: 24px 0 48px; display: grid; gap: 16px; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    h1 { margin: 0; font-size: 24px; letter-spacing: -0.03em; }
+    h2 { margin: 0 0 10px; font-size: 15px; }
     .card {
       border: 1px solid var(--line);
-      border-radius: 18px;
-      background: linear-gradient(180deg, rgba(32, 40, 27, .95), rgba(20, 24, 18, .95));
-      padding: 16px;
-      box-shadow: 0 20px 60px rgba(0,0,0,.22);
+      border-radius: 12px;
+      background: var(--panel);
+      padding: 14px;
     }
-    .metric { font-size: 30px; font-weight: 800; }
-    .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .13em; }
+    .summary { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+    .metric { border: 1px solid var(--line); border-radius: 10px; padding: 10px; background: #12151b; }
+    .metric strong { display: block; font-size: 18px; }
+    .label, .muted { color: var(--muted); font-size: 12px; }
     button, a.button {
-      border: 1px solid #735f29;
-      background: linear-gradient(180deg, #f3c55c, #b87b24);
-      color: #151207;
+      border: 1px solid #715127;
+      background: var(--accent);
+      color: #15100a;
       border-radius: 999px;
-      padding: 10px 14px;
-      font-weight: 800;
+      padding: 8px 12px;
+      font-weight: 700;
       cursor: pointer;
       text-decoration: none;
       display: inline-flex;
-      gap: 8px;
       align-items: center;
     }
-    button.secondary { background: #222a1c; color: var(--ink); border-color: var(--line); }
-    button.danger { background: #5b2626; color: #ffe9e7; border-color: #8f3c38; }
+    button.secondary, a.secondary { background: #151922; color: var(--ink); border-color: var(--line); }
     button:disabled { opacity: .55; cursor: wait; }
     .row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-    .tabs { display: flex; gap: 8px; flex-wrap: wrap; }
-    .tab { background: #1a2116; color: var(--ink); border-color: var(--line); }
-    .tab.active { background: #f2b84b; color: #151207; }
-    .section { display: none; }
-    .section.active { display: grid; gap: 12px; }
-    .item { border: 1px solid var(--line); border-radius: 14px; background: rgba(12, 16, 13, .6); padding: 14px; display: grid; gap: 10px; }
-    .meta { color: var(--muted); font-size: 12px; display: flex; flex-wrap: wrap; gap: 8px; }
-    .pill { border: 1px solid var(--line); border-radius: 999px; padding: 3px 8px; }
+    .cols { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(280px, .65fr); gap: 16px; align-items: start; }
+    .stack { display: grid; gap: 12px; }
+    .item { border-top: 1px solid var(--line); padding: 12px 0; display: grid; gap: 8px; }
+    .item:first-of-type { border-top: 0; padding-top: 0; }
+    .meta { color: var(--muted); font-size: 12px; display: flex; flex-wrap: wrap; gap: 6px; }
+    .pill { border: 1px solid var(--line); border-radius: 999px; padding: 2px 7px; }
     .good { color: var(--good); }
     .bad { color: var(--bad); }
-    .blue { color: var(--blue); }
-    pre, .text {
+    .text {
       white-space: pre-wrap;
       word-break: break-word;
       margin: 0;
       line-height: 1.45;
     }
-    .response { border-left: 3px solid var(--accent); padding-left: 10px; color: #ffe0a0; }
-    .empty { color: var(--muted); padding: 18px; border: 1px dashed var(--line); border-radius: 14px; }
-    .split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 360px); gap: 18px; align-items: start; }
-    @media (max-width: 900px) { .split { grid-template-columns: 1fr; } header, main { padding: 16px; } }
+    .response { color: #ffd58b; }
+    .empty { color: var(--muted); padding: 10px 0; }
+    .list { display: grid; gap: 8px; }
+    .compact { display: flex; justify-content: space-between; gap: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+    .compact:first-child { border-top: 0; padding-top: 0; }
+    @media (max-width: 820px) {
+      main { width: min(100% - 20px, 1080px); padding-top: 14px; }
+      header, .cols { grid-template-columns: 1fr; display: grid; }
+      .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
   </style>
 </head>
 <body>
-  <header>
-    <div class="row" style="justify-content: space-between;">
-      <div>
-        <h1>Facebook Bot Control</h1>
-        <div class="sub" id="subtitle">Loading…</div>
-      </div>
+  <main>
+    <header>
+      <h1>Facebook Bot</h1>
       <div class="row">
-        <button id="pollBtn">Run Poll Now</button>
+        <span class="muted" id="subtitle">Loading...</span>
+        <button id="pollBtn">Poll</button>
         <button class="secondary" id="refreshBtn">Refresh</button>
       </div>
-    </div>
-  </header>
-  <main>
-    <section class="grid" id="metrics"></section>
-    <div class="tabs">
-      <button class="tab active" data-tab="replies">Replies</button>
-      <button class="tab" data-tab="approvals">Approvals</button>
-      <button class="tab" data-tab="skipped">Skipped</button>
-      <button class="tab" data-tab="rules">Rules / Groups</button>
-      <button class="tab" data-tab="runs">Runs</button>
-    </div>
-    <div class="split">
-      <section class="card section active" id="replies"></section>
-      <section class="card section" id="approvals"></section>
-      <section class="card section" id="skipped"></section>
-      <section class="card section" id="rules"></section>
-      <section class="card section" id="runs"></section>
-      <aside class="card">
-        <div class="label">Paths</div>
-        <pre id="paths" style="margin-top:10px;color:var(--muted)"></pre>
+    </header>
+    <section class="summary" id="metrics"></section>
+    <div class="cols">
+      <section class="card" id="activity"></section>
+      <aside class="stack">
+        <section class="card" id="config"></section>
+        <section class="card" id="errors"></section>
       </aside>
     </div>
   </main>
@@ -313,102 +287,69 @@ function dashboardHtml() {
         alert(error.message);
       } finally {
         btn.disabled = false;
-        btn.textContent = 'Run Poll Now';
+        btn.textContent = 'Poll';
         await load();
       }
-    }
-
-    async function skipApproval(id) {
-      if (!confirm('Mark this approval as skipped?')) return;
-      await fetch('/approvals/skip?id=' + encodeURIComponent(id), { method: 'POST' });
-      await load();
     }
 
     function renderMetrics(status) {
       const metrics = [
         ['Mode', status.mode],
-        ['Dry Run', status.dryRun ? 'yes' : 'no'],
-        ['Approval', status.approvalMode ? 'yes' : 'no'],
+        ['Dry run', status.dryRun ? 'yes' : 'no'],
         ['Groups', status.enabledGroups + '/' + status.totalGroups],
         ['Rules', status.enabledRules + '/' + status.totalRules],
-        ['Pending', status.pendingApprovals],
-        ['Replied Keys', status.repliedCount],
-        ['Last Run', status.lastRunAt ? new Date(status.lastRunAt).toLocaleTimeString() : 'never'],
+        ['Replies', status.repliedCount],
+        ['Last run', status.lastRunAt ? new Date(status.lastRunAt).toLocaleTimeString() : 'never'],
       ];
-      $('metrics').innerHTML = metrics.map(([label, value]) => '<div class="card"><div class="label">' + escapeHtml(label) + '</div><div class="metric">' + escapeHtml(value) + '</div></div>').join('');
+      $('metrics').innerHTML = metrics.map(([label, value]) => '<div class="metric"><span class="label">' + escapeHtml(label) + '</span><strong>' + escapeHtml(value) + '</strong></div>').join('');
     }
 
-    function renderReplies(items) {
-      $('replies').innerHTML = '<h2>Replies / Dry-run Matches</h2>' + (items.length ? items.map((item) => {
-        const status = item.dryRun ? '<span class="pill blue">dry-run</span>' : '<span class="pill good">posted</span>';
-        const approval = item.approvalQueued ? '<span class="pill">queued approval</span>' : '';
+    function renderActivity(replies, history) {
+      const items = replies.length ? replies.slice(0, 15) : [];
+      const latest = history.find((entry) => entry.result) || null;
+      const latestResult = latest?.result || null;
+      const header = '<h2>Activity</h2>' + (latestResult ? '<div class="meta"><span class="pill ' + (latestResult.ok ? 'good' : 'bad') + '">' + (latestResult.ok ? 'last run ok' : 'last run error') + '</span><span>' + escapeHtml(fmt(latest.finishedAt)) + '</span><span>scanned ' + escapeHtml(latestResult.scanned ?? 0) + '</span><span>matched ' + escapeHtml(latestResult.matched ?? 0) + '</span></div>' : '');
+      $('activity').innerHTML = header + (items.length ? items.map((item) => {
+        const status = item.dryRun ? '<span class="pill">dry-run</span>' : '<span class="pill good">posted</span>';
         return '<article class="item">'
-          + '<div class="meta">' + status + approval + '<span class="pill">' + escapeHtml(item.groupName || item.groupId || '-') + '</span><span class="pill">' + escapeHtml(item.ruleId || '-') + '</span><span>' + escapeHtml(fmt(item.runFinishedAt)) + '</span></div>'
+          + '<div class="meta">' + status + '<span>' + escapeHtml(item.groupName || item.groupId || '-') + '</span><span>' + escapeHtml(item.ruleId || '-') + '</span><span>' + escapeHtml(fmt(item.runFinishedAt)) + '</span></div>'
           + (item.permalink ? '<a class="button secondary" target="_blank" href="' + escapeHtml(item.permalink) + '">Open Facebook</a>' : '')
-          + (item.targetText ? '<div><div class="label">Matched text</div><p class="text">' + escapeHtml(short(item.targetText)) + '</p></div>' : '<div class="empty">No text stored for this older event.</div>')
-          + (item.semantic ? '<div class="meta"><span class="pill">confidence ' + escapeHtml(item.semantic.confidence) + '</span><span class="pill">' + escapeHtml(item.semantic.category || '-') + '</span><span>' + escapeHtml(item.semantic.reason || '') + '</span></div>' : '')
-          + '<div><div class="label">Response</div><p class="text response">' + escapeHtml(item.response || '') + '</p></div>'
+          + (item.targetText ? '<p class="text">' + escapeHtml(short(item.targetText, 900)) + '</p>' : '')
+          + (item.semantic ? '<div class="meta"><span>confidence ' + escapeHtml(item.semantic.confidence) + '</span><span>' + escapeHtml(item.semantic.reason || '') + '</span></div>' : '')
+          + '<p class="text response">' + escapeHtml(item.response || '') + '</p>'
           + '</article>';
-      }).join('') : '<div class="empty">No replies or dry-run matches in history yet.</div>');
+      }).join('') : '<div class="empty">No matches or replies yet.</div>');
     }
 
-    function renderApprovals(items) {
-      $('approvals').innerHTML = '<h2>Pending / Past Approvals</h2>' + (items.length ? items.map((item) => {
-        return '<article class="item">'
-          + '<div class="meta"><span class="pill">' + escapeHtml(item.status || 'pending') + '</span><span class="pill">' + escapeHtml(item.groupName || item.groupId || '-') + '</span><span class="pill">' + escapeHtml(item.ruleId || '-') + '</span><span>' + escapeHtml(fmt(item.queuedAt)) + '</span></div>'
-          + (item.permalink ? '<a class="button secondary" target="_blank" href="' + escapeHtml(item.permalink) + '">Open Facebook</a>' : '')
-          + (item.targetText ? '<div><div class="label">Matched text</div><p class="text">' + escapeHtml(short(item.targetText)) + '</p></div>' : '')
-          + '<div><div class="label">Response</div><p class="text response">' + escapeHtml(item.response || '') + '</p></div>'
-          + (item.status === 'pending' ? '<div class="row"><button class="danger" onclick="skipApproval(' + JSON.stringify(item.id).replace(/"/g, '&quot;') + ')">Skip</button></div>' : '')
-          + '</article>';
-      }).join('') : '<div class="empty">No approval queue entries.</div>');
-    }
-
-    function renderSkipped(items) {
-      $('skipped').innerHTML = '<h2>Skipped</h2>' + (items.length ? items.map((item) => {
-        return '<article class="item">'
-          + '<div class="meta"><span class="pill bad">' + escapeHtml(item.reason || '-') + '</span><span class="pill">' + escapeHtml(item.groupId || '-') + '</span><span class="pill">' + escapeHtml(item.ruleId || '-') + '</span><span>' + escapeHtml(fmt(item.runFinishedAt)) + '</span></div>'
-          + (item.semantic ? '<pre>' + escapeHtml(JSON.stringify(item.semantic, null, 2)) + '</pre>' : '')
-          + '</article>';
-      }).join('') : '<div class="empty">No skipped items in recent history.</div>');
-    }
-
-    function renderRules(data) {
-      $('rules').innerHTML = '<h2>Rules</h2>' + data.rules.map((rule) =>
-        '<article class="item"><div class="meta"><span class="pill ' + (rule.enabled ? 'good' : 'bad') + '">' + (rule.enabled ? 'enabled' : 'disabled') + '</span><span class="pill">' + escapeHtml(rule.id) + '</span><span class="pill">semantic ' + (rule.semantic ? 'yes' : 'no') + '</span></div><p class="text response">' + escapeHtml(rule.response) + '</p></article>'
-      ).join('') + '<h2>Groups</h2>' + data.groups.map((group) =>
-        '<article class="item"><div class="meta"><span class="pill ' + (group.enabled ? 'good' : 'bad') + '">' + (group.enabled ? 'enabled' : 'disabled') + '</span><span>' + escapeHtml(group.name) + '</span></div>' + (group.url ? '<a class="button secondary" target="_blank" href="' + escapeHtml(group.url) + '">Open</a>' : '') + '</article>'
+    function renderConfig(data) {
+      const rules = data.rules.map((rule) =>
+        '<div class="compact"><span>' + escapeHtml(rule.id) + '</span><span class="' + (rule.enabled ? 'good' : 'bad') + '">' + (rule.enabled ? 'on' : 'off') + '</span></div>'
       ).join('');
+      const groups = data.groups.map((group) =>
+        '<div class="compact"><span>' + escapeHtml(group.name) + '</span><span class="' + (group.enabled ? 'good' : 'bad') + '">' + (group.enabled ? 'on' : 'off') + '</span></div>'
+      ).join('');
+      $('config').innerHTML = '<h2>Config</h2><div class="label">Rules</div><div class="list">' + rules + '</div><div class="label" style="margin-top:12px">Groups</div><div class="list">' + groups + '</div>';
     }
 
-    function renderRuns(items) {
-      $('runs').innerHTML = '<h2>Recent Runs</h2>' + (items.length ? items.map((entry) => {
-        const result = entry.result || {};
-        return '<article class="item"><div class="meta"><span class="pill ' + (result.ok ? 'good' : 'bad') + '">' + (result.ok ? 'ok' : 'error') + '</span><span>' + escapeHtml(fmt(entry.finishedAt)) + '</span></div><pre>' + escapeHtml(JSON.stringify(result, null, 2)) + '</pre></article>';
-      }).join('') : '<div class="empty">No runs yet.</div>');
+    function renderErrors(skipped, status) {
+      const errors = [];
+      if (status.lastError) errors.push({ reason: status.lastError.message, at: status.lastError.at });
+      for (const item of skipped.slice(0, 8)) errors.push(item);
+      $('errors').innerHTML = '<h2>Skipped / Errors</h2>' + (errors.length ? errors.map((item) =>
+        '<div class="compact"><span class="bad">' + escapeHtml(item.reason || item.error || '-') + '</span><span class="muted">' + escapeHtml(item.ruleId || item.groupId || item.at || '') + '</span></div>'
+      ).join('') : '<div class="empty">No recent errors.</div>');
     }
 
     function render() {
       if (!state?.ok) return;
       const s = state.status;
-      $('subtitle').innerHTML = 'Last run: <b>' + escapeHtml(fmt(s.lastRunAt)) + '</b>' + (s.lastError ? ' · <span class="bad">Last error: ' + escapeHtml(s.lastError.message) + '</span>' : '');
+      $('subtitle').innerHTML = 'Updated ' + escapeHtml(new Date(state.now).toLocaleTimeString());
       renderMetrics(s);
-      renderReplies(state.replies || []);
-      renderApprovals(state.approvals || []);
-      renderSkipped(state.skipped || []);
-      renderRules(state);
-      renderRuns(state.history || []);
-      $('paths').textContent = 'config: ' + s.configPath + '\\nstate: ' + s.statePath + '\\nhistory: ' + s.historyPath + '\\nupdated: ' + state.now;
+      renderActivity(state.replies || [], state.history || []);
+      renderConfig(state);
+      renderErrors(state.skipped || [], s);
     }
 
-    document.querySelectorAll('.tab').forEach((button) => {
-      button.addEventListener('click', () => {
-        document.querySelectorAll('.tab').forEach((tab) => tab.classList.remove('active'));
-        document.querySelectorAll('.section').forEach((section) => section.classList.remove('active'));
-        button.classList.add('active');
-        $(button.dataset.tab).classList.add('active');
-      });
-    });
     $('refreshBtn').addEventListener('click', load);
     $('pollBtn').addEventListener('click', runPoll);
     load();
