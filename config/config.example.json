@@ -1,0 +1,113 @@
+{
+  "mode": "scraper",
+  "dryRun": true,
+  "approvalMode": false,
+  "openrouter": {
+    "apiKeyEnv": "OPENROUTER_API_KEY",
+    "model": "openai/gpt-oss-120b:free",
+    "maxTokens": 180,
+    "responseFormat": false,
+    "retries": 3,
+    "siteUrl": "http://127.0.0.1:4020",
+    "appName": "Facebook Group Autoresponder"
+  },
+  "semanticClassifier": {
+    "enabled": true,
+    "threshold": 0.75,
+    "categories": [
+      "child_behavior_motivation",
+      "child_school_refusal",
+      "child_phone_games",
+      "child_aggression",
+      "other"
+    ]
+  },
+  "facebook": {
+    "apiVersion": "v20.0",
+    "accessTokenEnv": "FB_PAGE_ACCESS_TOKEN"
+  },
+  "polling": {
+    "lookbackMinutes": 30,
+    "feedLimitPerGroup": 25,
+    "includeComments": false,
+    "commentLimitPerPost": 25
+  },
+  "scraper": {
+    "headless": true,
+    "userDataDir": "/home/q/n8n-projects/facebook-group-autoresponder/state/browser-profile",
+    "scrollsPerGroup": 3,
+    "scrollPixels": 1800,
+    "initialWaitMs": 3000,
+    "waitAfterScrollMs": 1500,
+    "navigationTimeoutMs": 60000,
+    "defaultTimeoutMs": 10000,
+    "artifactDir": "/home/q/n8n-projects/facebook-group-autoresponder/state/artifacts"
+  },
+  "safety": {
+    "maxRepliesPerRun": 5,
+    "minMinutesBetweenRepliesPerGroup": 3
+  },
+  "groups": [
+    {
+      "id": "REPLACE_WITH_GROUP_ID",
+      "url": "https://www.facebook.com/groups/REPLACE_WITH_GROUP_ID",
+      "name": "Example group",
+      "enabled": false
+    }
+  ],
+  "rules": [
+    {
+      "id": "example-price-query",
+      "enabled": false,
+      "match": "any",
+      "queries": [
+        "price",
+        "how much",
+        "cost"
+      ],
+      "regexes": [],
+      "response": "Thanks for asking. Replace this with the real response.",
+      "cooldownMinutes": 60
+    },
+    {
+      "id": "child-behavior-complaint",
+      "enabled": false,
+      "semantic": true,
+      "semanticThreshold": 0.75,
+      "match": "any",
+      "queries": [
+        "ребенок",
+        "ребёнок",
+        "подросток",
+        "сын",
+        "дочь",
+        "дитина",
+        "підліток",
+        "син",
+        "донька",
+        "ничего не делает",
+        "ничего не хочет",
+        "не хочет учиться",
+        "не делает уроки",
+        "сидит в телефоне",
+        "играет целыми днями",
+        "нет мотивации",
+        "ленится",
+        "не слушается",
+        "агрессия",
+        "истерики",
+        "не хоче вчитися",
+        "сидить у телефоні",
+        "немає мотивації"
+      ],
+      "regexes": [
+        "реб[её]нок.*ничего",
+        "подросток.*ничего",
+        "не\\s+хочет\\s+(учиться|делать|заниматься)",
+        "сидит\\s+в\\s+(телефоне|планшете|компьютере)"
+      ],
+      "response": "Здравствуйте. Похоже, вы описываете сложность с поведением или мотивацией ребёнка/подростка. Если хотите, могу коротко подсказать, с чего начать разбирать такую ситуацию.",
+      "cooldownMinutes": 240
+    }
+  ]
+}

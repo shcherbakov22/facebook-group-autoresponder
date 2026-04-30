@@ -1,0 +1,16 @@
+[Unit]
+Description=Facebook Group Autoresponder Helper
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=q
+WorkingDirectory=/home/q/n8n-projects/facebook-group-autoresponder
+EnvironmentFile=-/home/q/n8n-projects/facebook-group-autoresponder/config/facebook-bot.env
+ExecStart=/usr/bin/node /home/q/n8n-projects/facebook-group-autoresponder/scripts/facebook-autoresponder-helper.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

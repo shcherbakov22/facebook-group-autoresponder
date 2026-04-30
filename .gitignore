@@ -1,0 +1,12 @@
+node_modules/
+config/config.json
+config/facebook-bot.env
+state/*
+!state/.gitkeep
+*.log
+*.tmp
+*.bak
+*.local
+coverage/
+dist/
+.DS_Store
