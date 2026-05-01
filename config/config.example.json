@@ -29,24 +29,24 @@
   },
   "polling": {
     "lookbackMinutes": 30,
-    "feedLimitPerGroup": 80,
+    "feedLimitPerGroup": 40,
     "includeComments": false,
     "commentLimitPerPost": 25
   },
   "scraper": {
     "headless": true,
     "userDataDir": "/home/q/n8n-projects/facebook-group-autoresponder/state/browser-profile",
-    "scrollsPerGroup": 18,
+    "scrollsPerGroup": 5,
     "scrollPixels": 1800,
     "initialWaitMs": 3000,
     "waitAfterScrollMs": 1200,
     "navigationTimeoutMs": 60000,
     "defaultTimeoutMs": 10000,
     "artifactDir": "/home/q/n8n-projects/facebook-group-autoresponder/state/artifacts",
-    "groupTimeoutMs": 180000
+    "groupTimeoutMs": 120000
   },
   "safety": {
-    "maxRepliesPerRun": 50,
+    "maxRepliesPerRun": 10,
     "minMinutesBetweenRepliesPerGroup": 0
   },
   "groups": [
