@@ -12,6 +12,8 @@ const targetRelevant = Number(process.env.FB_PARENT_FIND_TARGET || 5);
 const maxScrollsPerGroup = Number(process.env.FB_PARENT_FIND_SCROLLS || 80);
 const maxCandidates = Number(process.env.FB_PARENT_FIND_MAX_CANDIDATES || 40);
 const waitMs = Number(process.env.FB_PARENT_FIND_WAIT_MS || 1400);
+const candidateTimeoutMs = Number(process.env.FB_PARENT_FIND_CANDIDATE_TIMEOUT_MS || 90000);
+const expandCandidates = process.env.FB_PARENT_FIND_EXPAND !== 'false';
 
 function normalizeGroupUrl(group) {
   if (group.url) return group.url.replace(/\/$/, '');
@@ -229,8 +231,24 @@ function snippet(text) {
   return String(text || '').replace(/\s+/g, ' ').slice(0, 1000);
 }
 
+function withTimeout(promise, timeoutMs, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 async function main() {
   const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  if (process.env.FB_PARENT_FIND_OPENROUTER_RETRIES) {
+    config.openrouter ||= {};
+    config.openrouter.retries = Number(process.env.FB_PARENT_FIND_OPENROUTER_RETRIES);
+  }
+  if (process.env.FB_PARENT_FIND_OPENROUTER_TIMEOUT_MS) {
+    config.openrouter ||= {};
+    config.openrouter.timeoutMs = Number(process.env.FB_PARENT_FIND_OPENROUTER_TIMEOUT_MS);
+  }
   const groups = (config.groups || []).filter((group) => group.enabled);
   fs.mkdirSync(outputDir, { recursive: true });
 
@@ -279,7 +297,25 @@ async function main() {
             globalSeen.add(key);
             groupResult.candidates += 1;
             console.error(`candidate group="${group.name || group.id}" source=${card.source} permalink=${card.permalink || 'none'}`);
-            const expandedCard = await expandAndReadCandidate(page, card);
+            let expandedCard;
+            try {
+              expandedCard = expandCandidates
+                ? await withTimeout(expandAndReadCandidate(page, card), candidateTimeoutMs, 'candidate expansion')
+                : card;
+            } catch (error) {
+              const item = {
+                group: group.name || group.id,
+                source: card.source,
+                permalink: card.permalink,
+                candidateLinks: card.candidateLinks || [],
+                fullText: card.text,
+                snippet: snippet(card.text),
+                error: error.message,
+              };
+              report.errors.push(item);
+              console.error(`candidate expansion error: ${error.message}`);
+              continue;
+            }
             const item = {
               group: group.name || group.id,
               source: expandedCard.source,
@@ -290,12 +326,12 @@ async function main() {
               snippet: snippet(expandedCard.text),
             };
             try {
-              item.semantic = await classifyWithOpenRouter({
+              item.semantic = await withTimeout(classifyWithOpenRouter({
                 text: expandedCard.text,
                 groupName: group.name || group.id,
                 targetType: 'post',
                 config,
-              });
+              }), candidateTimeoutMs, 'semantic classification');
               if (item.semantic.relevant) {
                 groupResult.relevant += 1;
                 report.relevant.push(item);

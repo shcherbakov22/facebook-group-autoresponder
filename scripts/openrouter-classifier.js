@@ -1,10 +1,11 @@
 const https = require('node:https');
 
-function requestJson(method, url, { headers = {}, body } = {}) {
+function requestJson(method, url, { headers = {}, body, timeoutMs = 45000 } = {}) {
   return new Promise((resolve, reject) => {
     const payload = body === undefined ? null : Buffer.from(JSON.stringify(body));
     const req = https.request(url, {
       method,
+      timeout: timeoutMs,
       headers: {
         ...(payload ? { 'content-type': 'application/json', 'content-length': String(payload.length) } : {}),
         ...headers,
@@ -27,6 +28,7 @@ function requestJson(method, url, { headers = {}, body } = {}) {
         reject(new Error(`OpenRouter ${method} failed ${res.statusCode}: ${text.slice(0, 500)}`));
       });
     });
+    req.on('timeout', () => req.destroy(new Error(`OpenRouter ${method} timed out after ${timeoutMs}ms`)));
     req.on('error', reject);
     if (payload) req.write(payload);
     req.end();
@@ -101,6 +103,7 @@ async function classifyWithOpenRouter({ text, groupName, targetType, config }) {
           'HTTP-Referer': openrouter.siteUrl || 'http://127.0.0.1:4020',
           'X-Title': openrouter.appName || 'Facebook Group Autoresponder',
         },
+        timeoutMs: Number(openrouter.timeoutMs || 45000),
         body: {
           model,
           messages,

@@ -24,6 +24,14 @@ function stableTargetId(group, target) {
   return `${group.id || group.url}:${textHash}`;
 }
 
+function withTimeout(promise, timeoutMs, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 async function isLoginRequired(page) {
   const url = page.url();
   if (/^file:/i.test(url)) return false;
@@ -275,7 +283,17 @@ async function pollWithScraper({ config, state, ruleMatches, canReply, markRepli
 
     try {
       for (const group of enabledGroups) {
-      const posts = await scrapePosts(page, group, config);
+      let posts;
+      try {
+        posts = await withTimeout(
+          scrapePosts(page, group, config),
+          Number(scraper.groupTimeoutMs || 180000),
+          `group scrape ${group.name || group.id || group.url}`
+        );
+      } catch (error) {
+        stats.skipped.push({ groupId: group.id || group.url, reason: error.message });
+        continue;
+      }
       for (const post of posts) {
         const targets = [{ type: 'post', data: post }];
         if (config.polling?.includeComments) {

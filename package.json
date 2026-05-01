@@ -14,7 +14,6 @@
     "find:parent-posts": "node scripts/find-parent-problem-posts.js",
     "status": "curl -s http://127.0.0.1:4020/status",
     "history": "curl -s 'http://127.0.0.1:4020/history?limit=20'",
-    "approvals": "curl -s http://127.0.0.1:4020/approvals",
     "validate:live": "node scripts/validate-config.js",
     "login": "FB_BOT_HEADLESS=false node scripts/facebook-scraper-login.js",
     "poll": "curl -s -X POST http://127.0.0.1:4020/poll"

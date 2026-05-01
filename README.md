@@ -73,7 +73,7 @@ Semantic rules can use OpenRouter as a second-stage classifier after keyword/reg
 "openai/gpt-oss-120b:free"
 ```
 
-Keep semantic reply rules disabled or use `approvalMode: true` until enough real matches have been reviewed.
+Keep `dryRun: true` until enough real matches have been reviewed.
 
 Group example:
 
@@ -121,24 +121,20 @@ curl -s -X POST http://127.0.0.1:4020/poll | jq
 ```bash
 curl -s http://127.0.0.1:4020/status | jq
 curl -s 'http://127.0.0.1:4020/history?limit=20' | jq
-curl -s http://127.0.0.1:4020/approvals | jq
 ```
 
 `/status` validates the config before returning. If a group/rule is malformed, the endpoint returns an error instead of letting a scheduled poll fail later.
 
 `/history` reads recent run summaries from `state/history.jsonl`.
 
-`/approvals` lists queued reply actions when `approvalMode` is enabled.
-
 ## Going Live
 
 Only after dry-run output is correct:
 
 1. Set `dryRun` to `false`.
-2. Optionally set `approvalMode` to `true` first, which queues matches without posting.
-3. Restart the helper.
-4. Manually execute the n8n workflow once.
-5. If the result is correct, activate the workflow.
+2. Restart the helper.
+3. Manually execute the n8n workflow once.
+4. If the result is correct, activate the workflow.
 
 ```bash
 doas systemctl restart facebook-autoresponder-helper.service

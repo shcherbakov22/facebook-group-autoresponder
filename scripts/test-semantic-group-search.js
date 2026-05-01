@@ -11,6 +11,7 @@ const outputDir = process.env.FB_SEMANTIC_TEST_DIR || path.join(projectRoot, 'st
 const maxGroups = Number(process.env.FB_SEMANTIC_SEARCH_MAX_GROUPS || 10);
 const maxResultsPerSearch = Number(process.env.FB_SEMANTIC_SEARCH_RESULTS || 12);
 const scrollsPerSearch = Number(process.env.FB_SEMANTIC_SEARCH_SCROLLS || 3);
+const classifyTimeoutMs = Number(process.env.FB_SEMANTIC_SEARCH_CLASSIFY_TIMEOUT_MS || 45000);
 const searchTerms = (process.env.FB_SEMANTIC_SEARCH_TERMS || [
   'ребенок ничего не делает',
   'ребёнок ничего не делает',
@@ -76,8 +77,24 @@ function snippet(text) {
   return String(text || '').replace(/\s+/g, ' ').slice(0, 700);
 }
 
+function withTimeout(promise, timeoutMs, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 async function main() {
   const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  if (process.env.FB_SEMANTIC_SEARCH_OPENROUTER_RETRIES) {
+    config.openrouter ||= {};
+    config.openrouter.retries = Number(process.env.FB_SEMANTIC_SEARCH_OPENROUTER_RETRIES);
+  }
+  if (process.env.FB_SEMANTIC_SEARCH_OPENROUTER_TIMEOUT_MS) {
+    config.openrouter ||= {};
+    config.openrouter.timeoutMs = Number(process.env.FB_SEMANTIC_SEARCH_OPENROUTER_TIMEOUT_MS);
+  }
   const groups = (config.groups || []).filter((group) => group.enabled).slice(0, maxGroups);
   fs.mkdirSync(outputDir, { recursive: true });
   const summary = {
@@ -136,12 +153,12 @@ async function main() {
               snippet: snippet(item.text),
             };
             try {
-              result.semantic = await classifyWithOpenRouter({
+              result.semantic = await withTimeout(classifyWithOpenRouter({
                 text: item.text,
                 groupName: group.name || group.id,
                 targetType: 'post',
                 config,
-              });
+              }), classifyTimeoutMs, 'semantic classification');
               if (result.semantic.relevant) summary.totals.relevant += 1;
               else summary.totals.rejected += 1;
             } catch (error) {

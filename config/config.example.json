@@ -9,7 +9,8 @@
     "responseFormat": false,
     "retries": 3,
     "siteUrl": "http://127.0.0.1:4020",
-    "appName": "Facebook Group Autoresponder"
+    "appName": "Facebook Group Autoresponder",
+    "timeoutMs": 45000
   },
   "semanticClassifier": {
     "enabled": true,
@@ -28,24 +29,25 @@
   },
   "polling": {
     "lookbackMinutes": 30,
-    "feedLimitPerGroup": 25,
+    "feedLimitPerGroup": 80,
     "includeComments": false,
     "commentLimitPerPost": 25
   },
   "scraper": {
     "headless": true,
     "userDataDir": "/home/q/n8n-projects/facebook-group-autoresponder/state/browser-profile",
-    "scrollsPerGroup": 3,
+    "scrollsPerGroup": 18,
     "scrollPixels": 1800,
     "initialWaitMs": 3000,
-    "waitAfterScrollMs": 1500,
+    "waitAfterScrollMs": 1200,
     "navigationTimeoutMs": 60000,
     "defaultTimeoutMs": 10000,
-    "artifactDir": "/home/q/n8n-projects/facebook-group-autoresponder/state/artifacts"
+    "artifactDir": "/home/q/n8n-projects/facebook-group-autoresponder/state/artifacts",
+    "groupTimeoutMs": 180000
   },
   "safety": {
-    "maxRepliesPerRun": 5,
-    "minMinutesBetweenRepliesPerGroup": 3
+    "maxRepliesPerRun": 50,
+    "minMinutesBetweenRepliesPerGroup": 0
   },
   "groups": [
     {
@@ -71,7 +73,7 @@
     },
     {
       "id": "child-behavior-complaint",
-      "enabled": false,
+      "enabled": true,
       "semantic": true,
       "semanticThreshold": 0.75,
       "match": "any",
@@ -106,8 +108,8 @@
         "не\\s+хочет\\s+(учиться|делать|заниматься)",
         "сидит\\s+в\\s+(телефоне|планшете|компьютере)"
       ],
-      "response": "Здравствуйте. Похоже, вы описываете сложность с поведением или мотивацией ребёнка/подростка. Если хотите, могу коротко подсказать, с чего начать разбирать такую ситуацию.",
-      "cooldownMinutes": 240
+      "response": "Академия самостоятельности ответственности. Помогаем таким детям.",
+      "cooldownMinutes": 0
     }
   ]
 }
