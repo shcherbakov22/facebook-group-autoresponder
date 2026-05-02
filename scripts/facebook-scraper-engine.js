@@ -24,12 +24,22 @@ function stableTargetId(group, target) {
   return `${group.id || group.url}:${textHash}`;
 }
 
-function withTimeout(promise, timeoutMs, label) {
+function withTimeout(promise, timeoutMs, label, onTimeout) {
   let timer;
   const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+    timer = setTimeout(async () => {
+      if (onTimeout) await onTimeout().catch(() => {});
+      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
   });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+function errorMessage(error) {
+  if (error?.message) return error.message;
+  if (error?.code) return String(error.code);
+  if (error?.name) return String(error.name);
+  return String(error || 'unknown error');
 }
 
 async function isLoginRequired(page) {
@@ -86,12 +96,12 @@ async function scrapePosts(page, group, config) {
   if (await isLoginRequired(page)) {
     throw new Error(`Facebook session is not logged in or is checkpointed while opening ${groupUrl}`);
   }
-  await expandVisibleText(page);
+  if (scraper.expandText === true) await expandVisibleText(page);
 
   for (let i = 0; i < scrolls; i += 1) {
     await page.mouse.wheel(0, Number(scraper.scrollPixels || 1800));
     await page.waitForTimeout(waitMs);
-    await expandVisibleText(page);
+    if (scraper.expandText === true) await expandVisibleText(page);
   }
 
   return page.evaluate(({ maxPosts: limit }) => {
@@ -101,9 +111,19 @@ async function scrapePosts(page, group, config) {
 
     function findPermalink(element) {
       const anchors = [...element.querySelectorAll('a[href]')];
-      const candidates = anchors
-        .map((anchor) => anchor.href)
-        .filter((href) => /facebook\.com\/groups\/|\/permalink\/|story_fbid=|multi_permalinks=/.test(href));
+      const candidates = anchors.map((anchor) => anchor.href).filter((href) => {
+        try {
+          const url = new URL(href);
+          const path = url.pathname;
+          if (!/facebook\.com$/i.test(url.hostname) && !/\.facebook\.com$/i.test(url.hostname)) return false;
+          if (/\/groups\/[^/]+\/user\//i.test(path)) return false;
+          if (/\/groups\/[^/]+\/posts\/[^/]+/i.test(path)) return true;
+          if (/\/groups\/[^/]+\/permalink\/[^/]+/i.test(path)) return true;
+          return url.searchParams.has('story_fbid') || url.searchParams.has('multi_permalinks');
+        } catch {
+          return false;
+        }
+      });
       return candidates[0] || null;
     }
 
@@ -278,123 +298,122 @@ async function pollWithScraper({ config, state, ruleMatches, canReply, markRepli
   });
 
   try {
-    const page = context.pages()[0] || await context.newPage();
-    page.setDefaultTimeout(Number(scraper.defaultTimeoutMs || 10000));
-
     try {
       for (const group of enabledGroups) {
-      let posts;
-      try {
-        posts = await withTimeout(
-          scrapePosts(page, group, config),
-          Number(scraper.groupTimeoutMs || 180000),
-          `group scrape ${group.name || group.id || group.url}`
-        );
-      } catch (error) {
-        stats.skipped.push({ groupId: group.id || group.url, reason: error.message });
-        continue;
-      }
-      for (const post of posts) {
-        const targets = [{ type: 'post', data: post }];
-        if (config.polling?.includeComments) {
-          const comments = await scrapeCommentsForPost(page, post, config);
-          for (const comment of comments) {
-            targets.push({ type: 'comment', data: comment });
-          }
-        }
+        const page = await context.newPage();
+        page.setDefaultTimeout(Number(scraper.defaultTimeoutMs || 10000));
+        try {
+          const posts = await withTimeout(
+            scrapePosts(page, group, config),
+            Number(scraper.groupTimeoutMs || 180000),
+            `group scrape ${group.name || group.id || group.url}`,
+            async () => page.close()
+          );
 
-        for (const target of targets) {
-          const targetId = stableTargetId(group, target.data);
-          target.data.id = targetId;
-          stats.scanned += 1;
-          for (const rule of enabledRules) {
-            if (stats.replies.length >= maxReplies) break;
-            if (!ruleMatches(rule, target.data.message || '')) continue;
+          for (const post of posts) {
+            const targets = [{ type: 'post', data: post }];
+            if (config.polling?.includeComments) {
+              const comments = await scrapeCommentsForPost(page, post, config);
+              for (const comment of comments) {
+                targets.push({ type: 'comment', data: comment });
+              }
+            }
 
-            let semantic = null;
-            if (rule.semantic) {
-              stats.semanticChecked += 1;
-              try {
-                semantic = await classifyWithOpenRouter({
-                  text: target.data.message || '',
+            for (const target of targets) {
+              const targetId = stableTargetId(group, target.data);
+              target.data.id = targetId;
+              stats.scanned += 1;
+              for (const rule of enabledRules) {
+                if (stats.replies.length >= maxReplies) break;
+                if (!ruleMatches(rule, target.data.message || '')) continue;
+
+                let semantic = null;
+                if (rule.semantic) {
+                  stats.semanticChecked += 1;
+                  try {
+                    semantic = await classifyWithOpenRouter({
+                      text: target.data.message || '',
+                      groupName: group.name || group.id || group.url,
+                      targetType: target.type,
+                      config,
+                    });
+                  } catch (error) {
+                    stats.skipped.push({
+                      groupId: group.id || group.url,
+                      targetId,
+                      ruleId: rule.id,
+                      reason: `semantic-error: ${errorMessage(error)}`,
+                    });
+                    continue;
+                  }
+                  const threshold = Number(rule.semanticThreshold || config.semanticClassifier?.threshold || 0.75);
+                  if (!semantic.relevant || semantic.confidence < threshold) {
+                    stats.skipped.push({
+                      groupId: group.id || group.url,
+                      targetId,
+                      ruleId: rule.id,
+                      reason: 'semantic-not-relevant',
+                      semantic,
+                    });
+                    continue;
+                  }
+                  stats.semanticMatched += 1;
+                }
+                stats.matched += 1;
+
+                const allowed = canReply(state, group.id || group.url, rule, targetId, config);
+                if (!allowed.ok) {
+                  stats.skipped.push({ groupId: group.id || group.url, targetId, ruleId: rule.id, reason: allowed.reason });
+                  continue;
+                }
+
+                const action = {
+                  groupId: group.id || group.url,
                   groupName: group.name || group.id || group.url,
+                  targetId,
                   targetType: target.type,
-                  config,
-                });
-              } catch (error) {
-                stats.skipped.push({
-                  groupId: group.id || group.url,
-                  targetId,
                   ruleId: rule.id,
-                  reason: `semantic-error: ${error.message}`,
-                });
-                continue;
-              }
-              const threshold = Number(rule.semanticThreshold || config.semanticClassifier?.threshold || 0.75);
-              if (!semantic.relevant || semantic.confidence < threshold) {
-                stats.skipped.push({
-                  groupId: group.id || group.url,
-                  targetId,
-                  ruleId: rule.id,
-                  reason: 'semantic-not-relevant',
+                  response: rule.response,
+                  targetText: String(target.data.message || '').replace(/\s+/g, ' ').trim().slice(0, 1200),
+                  createdTime: target.data.created_time || null,
+                  dryRun: Boolean(config.dryRun),
+                  permalink: target.data.permalink_url || target.data.parent_permalink_url || null,
                   semantic,
-                });
-                continue;
-              }
-              stats.semanticMatched += 1;
-            }
-            stats.matched += 1;
+                };
 
-            const allowed = canReply(state, group.id || group.url, rule, targetId, config);
-            if (!allowed.ok) {
-              stats.skipped.push({ groupId: group.id || group.url, targetId, ruleId: rule.id, reason: allowed.reason });
-              continue;
-            }
+                if (config.approvalMode) {
+                  queueApproval(state, action);
+                  markReplied(state, group.id || group.url, rule, targetId);
+                  stats.approvalsQueued = (stats.approvalsQueued || 0) + 1;
+                  stats.replies.push({ ...action, approvalQueued: true });
+                  continue;
+                }
 
-            const action = {
-              groupId: group.id || group.url,
-              groupName: group.name || group.id || group.url,
-              targetId,
-              targetType: target.type,
-              ruleId: rule.id,
-              response: rule.response,
-              targetText: String(target.data.message || '').replace(/\s+/g, ' ').trim().slice(0, 1200),
-              createdTime: target.data.created_time || null,
-              dryRun: Boolean(config.dryRun),
-              permalink: target.data.permalink_url || target.data.parent_permalink_url || null,
-              semantic,
-            };
+                if (!config.dryRun) {
+                  const opened = await openTargetForReply(page, target.data, config);
+                  if (!opened) {
+                    stats.skipped.push({ groupId: action.groupId, targetId, ruleId: rule.id, reason: 'target-not-openable' });
+                    continue;
+                  }
+                  const posted = await submitComment(page, rule.response);
+                  if (!posted) {
+                    stats.skipped.push({ groupId: action.groupId, targetId, ruleId: rule.id, reason: 'comment-box-not-found' });
+                    continue;
+                  }
+                }
 
-            if (config.approvalMode) {
-              queueApproval(state, action);
-              markReplied(state, group.id || group.url, rule, targetId);
-              stats.approvalsQueued = (stats.approvalsQueued || 0) + 1;
-              stats.replies.push({ ...action, approvalQueued: true });
-              continue;
-            }
-
-            if (!config.dryRun) {
-              const opened = await openTargetForReply(page, target.data, config);
-              if (!opened) {
-                stats.skipped.push({ groupId: action.groupId, targetId, ruleId: rule.id, reason: 'target-not-openable' });
-                continue;
-              }
-              const posted = await submitComment(page, rule.response);
-              if (!posted) {
-                stats.skipped.push({ groupId: action.groupId, targetId, ruleId: rule.id, reason: 'comment-box-not-found' });
-                continue;
+                markReplied(state, group.id || group.url, rule, targetId);
+                stats.replies.push(action);
               }
             }
-
-            markReplied(state, group.id || group.url, rule, targetId);
-            stats.replies.push(action);
           }
+        } catch (error) {
+          stats.skipped.push({ groupId: group.id || group.url, reason: errorMessage(error) });
+        } finally {
+          await page.close().catch(() => {});
         }
       }
-    }
     } catch (error) {
-      const artifact = await captureFailureArtifact(page, config, error);
-      stats.artifacts.push(artifact);
       throw error;
     }
   } finally {
