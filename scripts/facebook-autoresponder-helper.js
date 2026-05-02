@@ -157,7 +157,7 @@ function ruleMatches(rule, text) {
       }
     })
   ];
-  if (checks.length === 0) return false;
+  if (checks.length === 0) return Boolean(rule.semantic);
   return rule.match === 'all' ? checks.every(Boolean) : checks.some(Boolean);
 }
 
