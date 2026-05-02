@@ -41,30 +41,63 @@ async function extractVisibleCards(page, group) {
     function clean(value) {
       return (value || '').replace(/\s+/g, ' ').trim();
     }
+    function canonicalFacebookUrl(href) {
+      try {
+        const url = new URL(href);
+        const path = url.pathname;
+        if (!/facebook\.com$/i.test(url.hostname) && !/\.facebook\.com$/i.test(url.hostname)) return null;
+        if (/\/groups\/[^/]+\/user\//i.test(path)) return null;
+        if (/\/groups\/[^/]+\/posts\/[^/]+/i.test(path) || /\/groups\/[^/]+\/permalink\/[^/]+/i.test(path)) {
+          const cleanUrl = new URL(`${url.origin}${path}`);
+          for (const key of ['comment_id', 'reply_comment_id']) {
+            if (url.searchParams.has(key)) cleanUrl.searchParams.set(key, url.searchParams.get(key));
+          }
+          return cleanUrl.toString();
+        }
+        if (url.searchParams.has('story_fbid') || url.searchParams.has('multi_permalinks')) {
+          const cleanUrl = new URL(`${url.origin}${path}`);
+          for (const key of ['story_fbid', 'multi_permalinks', 'id', 'comment_id', 'reply_comment_id']) {
+            if (url.searchParams.has(key)) cleanUrl.searchParams.set(key, url.searchParams.get(key));
+          }
+          return cleanUrl.toString();
+        }
+      } catch {
+        return null;
+      }
+      return null;
+    }
     function postIdFrom(text) {
       const match = text.match(/groups\/[^/]+\/posts\/(\d+)/);
       return match?.[1] || null;
     }
     function permalinkFromNode(node) {
-      const hrefs = [...node.querySelectorAll('a[href]')].map((a) => a.href);
-      const hit = hrefs.find((href) => /\/groups\/[^/]+\/posts\/\d+|story_fbid=|multi_permalinks=/.test(href));
+      const hit = nodeLinks(node)[0];
       if (!hit) return null;
       const id = postIdFrom(hit);
-      return id ? `${groupUrl}/posts/${id}/` : hit.split('?')[0];
+      return id ? `${groupUrl}/posts/${id}/` : hit;
     }
     function candidateLinksFromTextWindow(windowText) {
       const links = [];
       for (const match of windowText.matchAll(/https:\/\/www\.facebook\.com\/groups\/[^ "'<>]+/g)) {
-        const href = match[0].split('?')[0].replace(/[),.]+$/, '');
-        if (/\/posts\/\d+|story_fbid=|multi_permalinks=/.test(href)) links.push(href);
+        const href = canonicalFacebookUrl(match[0].replace(/[),.]+$/, ''));
+        if (href) links.push(href);
       }
       return [...new Set(links)].slice(0, 10);
     }
     function nodeLinks(node) {
       return [...new Set([...node.querySelectorAll('a[href]')]
         .map((a) => a.href)
-        .filter((href) => /\/groups\/[^/]+\/posts\/\d+|story_fbid=|multi_permalinks=|comment_id=/.test(href))
-        .map((href) => href.split('?')[0]))].slice(0, 10);
+        .map((href) => canonicalFacebookUrl(href))
+        .filter(Boolean))].slice(0, 10);
+    }
+    function findNodeForText(text) {
+      const anchor = text.slice(0, 140);
+      if (anchor.length < 40) return null;
+      const nodes = [...document.querySelectorAll('[role="article"], div')];
+      const matches = nodes
+        .filter((node) => clean(node.innerText || '').includes(anchor))
+        .sort((a, b) => clean(a.innerText || '').length - clean(b.innerText || '').length);
+      return matches[0] || null;
     }
 
     const cards = [];
@@ -76,7 +109,11 @@ async function extractVisibleCards(page, group) {
       if (text.length < 80) continue;
       const windowText = bodyText.slice(Math.max(0, match.index - 4000), match.index + match[0].length + 4000);
       const id = postIdFrom(windowText);
-      const links = candidateLinksFromTextWindow(windowText);
+      const nearbyNode = findNodeForText(text);
+      const links = [...new Set([
+        ...candidateLinksFromTextWindow(windowText),
+        ...(nearbyNode ? nodeLinks(nearbyNode) : []),
+      ])].slice(0, 10);
       const key = id || text.slice(0, 300);
       if (seen.has(key)) continue;
       seen.add(key);

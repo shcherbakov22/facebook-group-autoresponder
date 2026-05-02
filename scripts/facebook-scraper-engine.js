@@ -109,21 +109,35 @@ async function scrapePosts(page, group, config) {
       return (element?.innerText || '').replace(/\s+/g, ' ').trim();
     }
 
+    function canonicalFacebookUrl(href) {
+      try {
+        const url = new URL(href);
+        const path = url.pathname;
+        if (!/facebook\.com$/i.test(url.hostname) && !/\.facebook\.com$/i.test(url.hostname)) return null;
+        if (/\/groups\/[^/]+\/user\//i.test(path)) return null;
+        if (/\/groups\/[^/]+\/posts\/[^/]+/i.test(path) || /\/groups\/[^/]+\/permalink\/[^/]+/i.test(path)) {
+          const clean = new URL(`${url.origin}${path}`);
+          for (const key of ['comment_id', 'reply_comment_id']) {
+            if (url.searchParams.has(key)) clean.searchParams.set(key, url.searchParams.get(key));
+          }
+          return clean.toString();
+        }
+        if (url.searchParams.has('story_fbid') || url.searchParams.has('multi_permalinks')) {
+          const clean = new URL(`${url.origin}${path}`);
+          for (const key of ['story_fbid', 'multi_permalinks', 'id', 'comment_id', 'reply_comment_id']) {
+            if (url.searchParams.has(key)) clean.searchParams.set(key, url.searchParams.get(key));
+          }
+          return clean.toString();
+        }
+      } catch {
+        return null;
+      }
+      return null;
+    }
+
     function findPermalink(element) {
       const anchors = [...element.querySelectorAll('a[href]')];
-      const candidates = anchors.map((anchor) => anchor.href).filter((href) => {
-        try {
-          const url = new URL(href);
-          const path = url.pathname;
-          if (!/facebook\.com$/i.test(url.hostname) && !/\.facebook\.com$/i.test(url.hostname)) return false;
-          if (/\/groups\/[^/]+\/user\//i.test(path)) return false;
-          if (/\/groups\/[^/]+\/posts\/[^/]+/i.test(path)) return true;
-          if (/\/groups\/[^/]+\/permalink\/[^/]+/i.test(path)) return true;
-          return url.searchParams.has('story_fbid') || url.searchParams.has('multi_permalinks');
-        } catch {
-          return false;
-        }
-      });
+      const candidates = anchors.map((anchor) => canonicalFacebookUrl(anchor.href)).filter(Boolean);
       return candidates[0] || null;
     }
 
@@ -188,6 +202,40 @@ async function scrapeCommentsForPost(page, post, config) {
       return (value || '').replace(/\s+/g, ' ').trim();
     }
 
+    function canonicalFacebookUrl(href) {
+      try {
+        const url = new URL(href);
+        const path = url.pathname;
+        if (!/facebook\.com$/i.test(url.hostname) && !/\.facebook\.com$/i.test(url.hostname)) return null;
+        if (/\/groups\/[^/]+\/user\//i.test(path)) return null;
+        if (/\/groups\/[^/]+\/posts\/[^/]+/i.test(path) || /\/groups\/[^/]+\/permalink\/[^/]+/i.test(path)) {
+          const cleanUrl = new URL(`${url.origin}${path}`);
+          for (const key of ['comment_id', 'reply_comment_id']) {
+            if (url.searchParams.has(key)) cleanUrl.searchParams.set(key, url.searchParams.get(key));
+          }
+          return cleanUrl.toString();
+        }
+        if (url.searchParams.has('story_fbid') || url.searchParams.has('multi_permalinks')) {
+          const cleanUrl = new URL(`${url.origin}${path}`);
+          for (const key of ['story_fbid', 'multi_permalinks', 'id', 'comment_id', 'reply_comment_id']) {
+            if (url.searchParams.has(key)) cleanUrl.searchParams.set(key, url.searchParams.get(key));
+          }
+          return cleanUrl.toString();
+        }
+      } catch {
+        return null;
+      }
+      return null;
+    }
+
+    function commentPermalink(node) {
+      const links = [...node.querySelectorAll('a[href]')]
+        .map((anchor) => canonicalFacebookUrl(anchor.href))
+        .filter(Boolean);
+      return links.find((href) => /[?&](comment_id|reply_comment_id)=/.test(href)) || links[0] || null;
+    }
+
+    const parentUrl = canonicalFacebookUrl(window.location.href) || window.location.href;
     const nodes = [
       ...document.querySelectorAll('[aria-label*="Comment by"], [aria-label*="comment by"], div[role="article"]')
     ];
@@ -200,15 +248,21 @@ async function scrapeCommentsForPost(page, post, config) {
       if (!text || text.length < 3) continue;
       if (normalizedPost && text.includes(normalizedPost)) continue;
       if (/^(like|reply|share|comment)$/i.test(text)) continue;
-      const key = text.slice(0, 200);
+      const permalink = commentPermalink(node);
+      const key = permalink || text.slice(0, 200);
+      const existingIndex = comments.findIndex((comment) => (comment.permalink_url || comment.message.slice(0, 200)) === key);
+      if (existingIndex >= 0) {
+        if (text.length > comments[existingIndex].message.length) comments[existingIndex].message = text;
+        continue;
+      }
       if (seen.has(key)) continue;
       seen.add(key);
       comments.push({
         id: key,
         message: text,
         created_time: new Date().toISOString(),
-        permalink_url: null,
-        parent_permalink_url: window.location.href
+        permalink_url: permalink,
+        parent_permalink_url: parentUrl
       });
       if (comments.length >= limit) break;
     }
@@ -288,6 +342,7 @@ async function pollWithScraper({ config, state, ruleMatches, canReply, markRepli
     semanticChecked: 0,
     semanticMatched: 0,
   };
+  const seenTargets = new Set();
 
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless: scraper.headless !== false,
@@ -313,7 +368,12 @@ async function pollWithScraper({ config, state, ruleMatches, canReply, markRepli
           for (const post of posts) {
             const targets = [{ type: 'post', data: post }];
             if (config.polling?.includeComments) {
-              const comments = await scrapeCommentsForPost(page, post, config);
+              const comments = await withTimeout(
+                scrapeCommentsForPost(page, post, config),
+                Number(scraper.commentTimeoutMs || 45000),
+                `comment scrape ${post.permalink_url || post.id}`,
+                async () => page.close()
+              );
               for (const comment of comments) {
                 targets.push({ type: 'comment', data: comment });
               }
@@ -322,10 +382,18 @@ async function pollWithScraper({ config, state, ruleMatches, canReply, markRepli
             for (const target of targets) {
               const targetId = stableTargetId(group, target.data);
               target.data.id = targetId;
+              if (seenTargets.has(targetId)) continue;
+              seenTargets.add(targetId);
               stats.scanned += 1;
               for (const rule of enabledRules) {
                 if (stats.replies.length >= maxReplies) break;
                 if (!ruleMatches(rule, target.data.message || '')) continue;
+
+                const allowed = canReply(state, group.id || group.url, rule, targetId, config);
+                if (!allowed.ok) {
+                  stats.skipped.push({ groupId: group.id || group.url, targetId, ruleId: rule.id, reason: allowed.reason });
+                  continue;
+                }
 
                 let semantic = null;
                 if (rule.semantic) {
@@ -360,12 +428,6 @@ async function pollWithScraper({ config, state, ruleMatches, canReply, markRepli
                   stats.semanticMatched += 1;
                 }
                 stats.matched += 1;
-
-                const allowed = canReply(state, group.id || group.url, rule, targetId, config);
-                if (!allowed.ok) {
-                  stats.skipped.push({ groupId: group.id || group.url, targetId, ruleId: rule.id, reason: allowed.reason });
-                  continue;
-                }
 
                 const action = {
                   groupId: group.id || group.url,
