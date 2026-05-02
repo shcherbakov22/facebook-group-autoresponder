@@ -42,6 +42,16 @@ function errorMessage(error) {
   return String(error || 'unknown error');
 }
 
+function isLikelyOwnChildProblemComment(text) {
+  const source = String(text || '').toLowerCase();
+  return [
+    /\b(мой|моя|мо[её]|моего|моему|моим|у меня)\s+(сын|дочь|реб[её]нок|подросток|дочка|сыну|сына|дочери)\b/i,
+    /\b(сын|дочь|реб[её]нок|подросток|дочка)\s+(у меня|мой|моя|мо[её])\b/i,
+    /\b(мій|моя|моє|мого|моїй|у мене)\s+(син|донька|дитина|підліток)\b/i,
+    /\b(син|донька|дитина|підліток)\s+(у мене|мій|моя|моє)\b/i,
+  ].some((pattern) => pattern.test(source));
+}
+
 async function isLoginRequired(page) {
   const url = page.url();
   if (/^file:/i.test(url)) return false;
@@ -388,6 +398,15 @@ async function pollWithScraper({ config, state, ruleMatches, canReply, markRepli
               for (const rule of enabledRules) {
                 if (stats.replies.length >= maxReplies) break;
                 if (!ruleMatches(rule, target.data.message || '')) continue;
+                if (target.type === 'comment' && rule.semantic && !isLikelyOwnChildProblemComment(target.data.message || '')) {
+                  stats.skipped.push({
+                    groupId: group.id || group.url,
+                    targetId,
+                    ruleId: rule.id,
+                    reason: 'comment-not-own-child-problem',
+                  });
+                  continue;
+                }
 
                 const allowed = canReply(state, group.id || group.url, rule, targetId, config);
                 if (!allowed.ok) {
