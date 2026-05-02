@@ -93,7 +93,7 @@ async function extractVisibleCards(page, group) {
     function findNodeForText(text) {
       const anchor = text.slice(0, 140);
       if (anchor.length < 40) return null;
-      const nodes = [...document.querySelectorAll('[role="article"], div')];
+      const nodes = [...document.querySelectorAll('[role="article"], div[data-pagelet^="FeedUnit"], div[data-ad-preview="message"]')];
       const matches = nodes
         .filter((node) => clean(node.innerText || '').includes(anchor))
         .sort((a, b) => clean(a.innerText || '').length - clean(b.innerText || '').length);

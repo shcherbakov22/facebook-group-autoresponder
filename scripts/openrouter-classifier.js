@@ -58,6 +58,8 @@ function buildPrompt({ text, groupName, targetType, categories }) {
         'Not relevant: someone giving advice to another parent, replying in a debate, commenting on parenting theory, or discussing children generally unless the author clearly presents their own child/teen problem or asks for help.',
         'Not relevant: adult children, partners, employees, students/clients/patients, metaphors like "is he a child?", or stories about a child that do not ask for help or describe a current problem needing help.',
         'For comments, classify only the comment author text; do not infer a parent problem from quoted parent text, surrounding thread text, UI labels, likes, shares, translations, or names.',
+        'For comments, advice to another person is not relevant, including comments that say what someone should do, set rules, explain boundaries, or tell another parent not to send a child somewhere.',
+        'A comment is relevant only if the comment author themself says my child/my son/my daughter/у моего ребенка/мій син/моя дитина or clearly asks for help about their own minor child.',
         'When unsure, choose not relevant with high confidence.',
         'Return exactly one minified JSON object and nothing else.',
         'Use exactly these keys: relevant, confidence, category, reason, replyTemplate.',
