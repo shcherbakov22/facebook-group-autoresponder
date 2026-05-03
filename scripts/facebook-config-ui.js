@@ -146,7 +146,9 @@ function renderPage(message = '') {
   const rule = firstRule(config);
   const { state, history } = statusSummary();
   const lastRun = state.lastRunAt || 'never';
-  const lastError = state.lastError || '';
+  const lastError = state.lastError
+    ? (typeof state.lastError === 'string' ? state.lastError : state.lastError.message || JSON.stringify(state.lastError))
+    : '';
   const repliedCount = Object.keys(state.replied || {}).length;
   const seenCount = Math.max(0, Object.keys(state.seen || {}).filter((key) => !key.startsWith('__')).length);
 
