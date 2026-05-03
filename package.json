@@ -4,7 +4,7 @@
   "description": "Skeleton for an `n8n`-driven Facebook group autoresponder.",
   "main": "index.js",
   "scripts": {
-    "check": "node --check scripts/facebook-autoresponder-helper.js && node --check scripts/facebook-scraper-engine.js && node --check scripts/openrouter-classifier.js && node --check scripts/test-match.js && node --check scripts/facebook-scraper-login.js && node --check scripts/smoke-test-scraper-fixture.js && node --check scripts/test-semantic-scrape.js && node --check scripts/test-semantic-group-search.js && node --check scripts/benchmark-openrouter-classifier.js && node --check scripts/scrape-group-info.js && node --check scripts/test-facebook-global-search.js && node --check scripts/find-parent-problem-posts.js",
+    "check": "node --check scripts/facebook-autoresponder-helper.js && node --check scripts/facebook-config-ui.js && node --check scripts/facebook-scraper-engine.js && node --check scripts/openrouter-classifier.js && node --check scripts/test-match.js && node --check scripts/facebook-scraper-login.js && node --check scripts/smoke-test-scraper-fixture.js && node --check scripts/test-semantic-scrape.js && node --check scripts/test-semantic-group-search.js && node --check scripts/benchmark-openrouter-classifier.js && node --check scripts/scrape-group-info.js && node --check scripts/test-facebook-global-search.js && node --check scripts/find-parent-problem-posts.js",
     "smoke:scraper": "node scripts/smoke-test-scraper-fixture.js",
     "test:semantic-scrape": "node scripts/test-semantic-scrape.js",
     "test:semantic-search": "node scripts/test-semantic-group-search.js",

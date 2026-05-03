@@ -1,0 +1,16 @@
+[Unit]
+Description=Facebook Group Autoresponder Config UI
+After=network-online.target facebook-autoresponder-helper.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=q
+WorkingDirectory=/home/q/n8n-projects/facebook-group-autoresponder
+EnvironmentFile=-/home/q/n8n-projects/facebook-group-autoresponder/config/facebook-bot.env
+ExecStart=/usr/bin/node /home/q/n8n-projects/facebook-group-autoresponder/scripts/facebook-config-ui.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
