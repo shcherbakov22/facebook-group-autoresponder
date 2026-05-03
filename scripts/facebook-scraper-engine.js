@@ -3,6 +3,8 @@ const path = require('node:path');
 const { chromium } = require('playwright');
 const { classifyWithOpenRouter } = require('./openrouter-classifier.js');
 
+const SEEN_BASELINE_VERSION = 3;
+
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
 }
@@ -18,10 +20,22 @@ function normalizeGroupUrl(group) {
   return `https://www.facebook.com/groups/${group.id}`;
 }
 
+function groupFeedUrl(group, config) {
+  const groupUrl = normalizeGroupUrl(group);
+  if (group.fixturePath || /^file:/i.test(groupUrl) || config.scraper?.useChronologicalFeed === false) return groupUrl;
+  const url = new URL(groupUrl);
+  url.searchParams.set('sorting_setting', 'CHRONOLOGICAL');
+  return url.toString();
+}
+
 function stableTargetId(group, target) {
   if (target.permalink_url) return target.permalink_url;
   const textHash = Buffer.from(`${target.created_time || ''}:${target.message || ''}`).toString('base64url').slice(0, 80);
   return `${group.id || group.url}:${textHash}`;
+}
+
+function seenTargetKey(group, targetId) {
+  return `${group.id || group.url}:${targetId}`;
 }
 
 function withTimeout(promise, timeoutMs, label, onTimeout) {
@@ -99,7 +113,7 @@ async function scrapePosts(page, group, config) {
   const scrolls = Number(scraper.scrollsPerGroup || 3);
   const waitMs = Number(scraper.waitAfterScrollMs || 1500);
   const maxPosts = Number(config.polling?.feedLimitPerGroup || 25);
-  const groupUrl = normalizeGroupUrl(group);
+  const groupUrl = groupFeedUrl(group, config);
 
   await page.goto(groupUrl, { waitUntil: 'domcontentloaded', timeout: Number(scraper.navigationTimeoutMs || 60000) });
   await page.waitForTimeout(Number(scraper.initialWaitMs || 3000));
@@ -126,15 +140,11 @@ async function scrapePosts(page, group, config) {
         if (!/facebook\.com$/i.test(url.hostname) && !/\.facebook\.com$/i.test(url.hostname)) return null;
         if (/\/groups\/[^/]+\/user\//i.test(path)) return null;
         if (/\/groups\/[^/]+\/posts\/[^/]+/i.test(path) || /\/groups\/[^/]+\/permalink\/[^/]+/i.test(path)) {
-          const clean = new URL(`${url.origin}${path}`);
-          for (const key of ['comment_id', 'reply_comment_id']) {
-            if (url.searchParams.has(key)) clean.searchParams.set(key, url.searchParams.get(key));
-          }
-          return clean.toString();
+          return new URL(`${url.origin}${path}`).toString();
         }
         if (url.searchParams.has('story_fbid') || url.searchParams.has('multi_permalinks')) {
           const clean = new URL(`${url.origin}${path}`);
-          for (const key of ['story_fbid', 'multi_permalinks', 'id', 'comment_id', 'reply_comment_id']) {
+          for (const key of ['story_fbid', 'multi_permalinks', 'id']) {
             if (url.searchParams.has(key)) clean.searchParams.set(key, url.searchParams.get(key));
           }
           return clean.toString();
@@ -341,10 +351,19 @@ async function pollWithScraper({ config, state, ruleMatches, canReply, markRepli
   const enabledGroups = (config.groups || []).filter((group) => group.enabled && (group.id || group.url));
   const enabledRules = (config.rules || []).filter((rule) => rule.enabled && rule.response);
   const maxReplies = Number(config.safety?.maxRepliesPerRun || 5);
+  state.seen = state.seen && typeof state.seen === 'object' ? state.seen : {};
+  const onlyNewTargets = Boolean(config.polling?.onlyNewTargets);
+  const baselineOnFirstRun = Boolean(config.polling?.baselineSeenOnFirstRun);
+  const baselineOnly = onlyNewTargets
+    && baselineOnFirstRun
+    && state.seen.__baselineVersion !== SEEN_BASELINE_VERSION;
   const stats = {
     mode: 'scraper',
     groups: enabledGroups.length,
     scanned: 0,
+    newTargets: 0,
+    seenRecorded: 0,
+    baselineOnly,
     matched: 0,
     replies: [],
     skipped: [],
@@ -363,141 +382,159 @@ async function pollWithScraper({ config, state, ruleMatches, canReply, markRepli
   });
 
   try {
-    try {
-      for (const group of enabledGroups) {
-        const page = await context.newPage();
-        page.setDefaultTimeout(Number(scraper.defaultTimeoutMs || 10000));
-        try {
-          const posts = await withTimeout(
-            scrapePosts(page, group, config),
-            Number(scraper.groupTimeoutMs || 180000),
-            `group scrape ${group.name || group.id || group.url}`,
-            async () => page.close()
-          );
+    for (const group of enabledGroups) {
+      const page = await context.newPage();
+      page.setDefaultTimeout(Number(scraper.defaultTimeoutMs || 10000));
+      try {
+        const posts = await withTimeout(
+          scrapePosts(page, group, config),
+          Number(scraper.groupTimeoutMs || 180000),
+          `group scrape ${group.name || group.id || group.url}`,
+          async () => page.close()
+        );
 
-          for (const post of posts) {
-            const targets = [{ type: 'post', data: post }];
-            if (config.polling?.includeComments) {
-              const comments = await withTimeout(
-                scrapeCommentsForPost(page, post, config),
-                Number(scraper.commentTimeoutMs || 45000),
-                `comment scrape ${post.permalink_url || post.id}`,
-                async () => page.close()
-              );
-              for (const comment of comments) {
-                targets.push({ type: 'comment', data: comment });
-              }
+        for (const post of posts) {
+          const targets = [{ type: 'post', data: post }];
+          if (config.polling?.includeComments) {
+            const comments = await withTimeout(
+              scrapeCommentsForPost(page, post, config),
+              Number(scraper.commentTimeoutMs || 45000),
+              `comment scrape ${post.permalink_url || post.id}`,
+              async () => page.close()
+            );
+            for (const comment of comments) {
+              targets.push({ type: 'comment', data: comment });
             }
+          }
 
-            for (const target of targets) {
-              const targetId = stableTargetId(group, target.data);
-              target.data.id = targetId;
-              if (seenTargets.has(targetId)) continue;
-              seenTargets.add(targetId);
-              stats.scanned += 1;
-              for (const rule of enabledRules) {
-                if (stats.replies.length >= maxReplies) break;
-                if (!ruleMatches(rule, target.data.message || '')) continue;
-                if (target.type === 'comment' && rule.semantic && !isLikelyOwnChildProblemComment(target.data.message || '')) {
+          for (const target of targets) {
+            const targetId = stableTargetId(group, target.data);
+            target.data.id = targetId;
+            if (seenTargets.has(targetId)) continue;
+            seenTargets.add(targetId);
+            stats.scanned += 1;
+            const targetSeenKey = seenTargetKey(group, targetId);
+            const wasSeen = Boolean(state.seen[targetSeenKey]);
+            if (!wasSeen) {
+              state.seen[targetSeenKey] = new Date().toISOString();
+              stats.seenRecorded += 1;
+            }
+            if (onlyNewTargets) {
+              if (baselineOnly) {
+                stats.skipped.push({ groupId: group.id || group.url, targetId, reason: 'baseline-seen' });
+                continue;
+              }
+              if (wasSeen) {
+                stats.skipped.push({ groupId: group.id || group.url, targetId, reason: 'already-seen' });
+                continue;
+              }
+              stats.newTargets += 1;
+            }
+            for (const rule of enabledRules) {
+              if (stats.replies.length >= maxReplies) break;
+              if (!ruleMatches(rule, target.data.message || '')) continue;
+              if (target.type === 'comment' && rule.semantic && !isLikelyOwnChildProblemComment(target.data.message || '')) {
+                stats.skipped.push({
+                  groupId: group.id || group.url,
+                  targetId,
+                  ruleId: rule.id,
+                  reason: 'comment-not-own-child-problem',
+                });
+                continue;
+              }
+
+              const allowed = canReply(state, group.id || group.url, rule, targetId, config);
+              if (!allowed.ok) {
+                stats.skipped.push({ groupId: group.id || group.url, targetId, ruleId: rule.id, reason: allowed.reason });
+                continue;
+              }
+
+              let semantic = null;
+              if (rule.semantic) {
+                stats.semanticChecked += 1;
+                try {
+                  semantic = await classifyWithOpenRouter({
+                    text: target.data.message || '',
+                    groupName: group.name || group.id || group.url,
+                    targetType: target.type,
+                    config,
+                  });
+                } catch (error) {
                   stats.skipped.push({
                     groupId: group.id || group.url,
                     targetId,
                     ruleId: rule.id,
-                    reason: 'comment-not-own-child-problem',
+                    reason: `semantic-error: ${errorMessage(error)}`,
                   });
                   continue;
                 }
-
-                const allowed = canReply(state, group.id || group.url, rule, targetId, config);
-                if (!allowed.ok) {
-                  stats.skipped.push({ groupId: group.id || group.url, targetId, ruleId: rule.id, reason: allowed.reason });
+                const threshold = Number(rule.semanticThreshold || config.semanticClassifier?.threshold || 0.75);
+                if (!semantic.relevant || semantic.confidence < threshold) {
+                  stats.skipped.push({
+                    groupId: group.id || group.url,
+                    targetId,
+                    ruleId: rule.id,
+                    reason: 'semantic-not-relevant',
+                    semantic,
+                  });
                   continue;
                 }
-
-                let semantic = null;
-                if (rule.semantic) {
-                  stats.semanticChecked += 1;
-                  try {
-                    semantic = await classifyWithOpenRouter({
-                      text: target.data.message || '',
-                      groupName: group.name || group.id || group.url,
-                      targetType: target.type,
-                      config,
-                    });
-                  } catch (error) {
-                    stats.skipped.push({
-                      groupId: group.id || group.url,
-                      targetId,
-                      ruleId: rule.id,
-                      reason: `semantic-error: ${errorMessage(error)}`,
-                    });
-                    continue;
-                  }
-                  const threshold = Number(rule.semanticThreshold || config.semanticClassifier?.threshold || 0.75);
-                  if (!semantic.relevant || semantic.confidence < threshold) {
-                    stats.skipped.push({
-                      groupId: group.id || group.url,
-                      targetId,
-                      ruleId: rule.id,
-                      reason: 'semantic-not-relevant',
-                      semantic,
-                    });
-                    continue;
-                  }
-                  stats.semanticMatched += 1;
-                }
-                stats.matched += 1;
-
-                const action = {
-                  groupId: group.id || group.url,
-                  groupName: group.name || group.id || group.url,
-                  targetId,
-                  targetType: target.type,
-                  ruleId: rule.id,
-                  response: rule.response,
-                  targetText: String(target.data.message || '').replace(/\s+/g, ' ').trim().slice(0, 1200),
-                  createdTime: target.data.created_time || null,
-                  dryRun: Boolean(config.dryRun),
-                  permalink: target.data.permalink_url || target.data.parent_permalink_url || null,
-                  semantic,
-                };
-
-                if (config.approvalMode) {
-                  queueApproval(state, action);
-                  markReplied(state, group.id || group.url, rule, targetId);
-                  stats.approvalsQueued = (stats.approvalsQueued || 0) + 1;
-                  stats.replies.push({ ...action, approvalQueued: true });
-                  continue;
-                }
-
-                if (!config.dryRun) {
-                  const opened = await openTargetForReply(page, target.data, config);
-                  if (!opened) {
-                    stats.skipped.push({ groupId: action.groupId, targetId, ruleId: rule.id, reason: 'target-not-openable' });
-                    continue;
-                  }
-                  const posted = await submitComment(page, rule.response);
-                  if (!posted) {
-                    stats.skipped.push({ groupId: action.groupId, targetId, ruleId: rule.id, reason: 'comment-box-not-found' });
-                    continue;
-                  }
-                }
-
-                markReplied(state, group.id || group.url, rule, targetId);
-                stats.replies.push(action);
+                stats.semanticMatched += 1;
               }
+              stats.matched += 1;
+
+              const action = {
+                groupId: group.id || group.url,
+                groupName: group.name || group.id || group.url,
+                targetId,
+                targetType: target.type,
+                ruleId: rule.id,
+                response: rule.response,
+                targetText: String(target.data.message || '').replace(/\s+/g, ' ').trim().slice(0, 1200),
+                createdTime: target.data.created_time || null,
+                dryRun: Boolean(config.dryRun),
+                permalink: target.data.permalink_url || target.data.parent_permalink_url || null,
+                semantic,
+              };
+
+              if (config.approvalMode) {
+                queueApproval(state, action);
+                markReplied(state, group.id || group.url, rule, targetId);
+                stats.approvalsQueued = (stats.approvalsQueued || 0) + 1;
+                stats.replies.push({ ...action, approvalQueued: true });
+                continue;
+              }
+
+              if (!config.dryRun) {
+                const opened = await openTargetForReply(page, target.data, config);
+                if (!opened) {
+                  stats.skipped.push({ groupId: action.groupId, targetId, ruleId: rule.id, reason: 'target-not-openable' });
+                  continue;
+                }
+                const posted = await submitComment(page, rule.response);
+                if (!posted) {
+                  stats.skipped.push({ groupId: action.groupId, targetId, ruleId: rule.id, reason: 'comment-box-not-found' });
+                  continue;
+                }
+              }
+
+              markReplied(state, group.id || group.url, rule, targetId);
+              stats.replies.push(action);
             }
           }
-        } catch (error) {
-          stats.skipped.push({ groupId: group.id || group.url, reason: errorMessage(error) });
-        } finally {
-          await page.close().catch(() => {});
         }
+      } catch (error) {
+        stats.skipped.push({ groupId: group.id || group.url, reason: errorMessage(error) });
+      } finally {
+        await page.close().catch(() => {});
       }
-    } catch (error) {
-      throw error;
     }
   } finally {
+    if (baselineOnly) {
+      state.seen.__baselineInitialized = true;
+      state.seen.__baselineVersion = SEEN_BASELINE_VERSION;
+      state.seen.__baselineAt = new Date().toISOString();
+    }
     await context.close();
   }
 

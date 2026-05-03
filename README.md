@@ -142,7 +142,10 @@ doas systemctl restart facebook-autoresponder-helper.service
 
 ## Scraper Notes
 
-- The scraper reads visible posts from configured group pages.
+- The n8n workflow polls the configured group pages every 15 minutes.
+- The scraper requests Facebook's chronological group feed (`sorting_setting=CHRONOLOGICAL`) by default to reduce ranked-feed churn.
+- With `onlyNewTargets` enabled, the scraper records stable post IDs in `state/state.json` and only evaluates posts it has not seen before.
+- With `baselineSeenOnFirstRun` enabled, the first run records currently visible posts without replying, so live mode starts from future posts instead of the existing feed backlog.
 - If `includeComments` is `true`, it opens each discovered post and scans visible comments too.
 - For matched comments, live mode currently posts a normal comment on the parent post rather than a nested direct reply.
 - Reply posting is best-effort because Facebook changes comment box markup often.

@@ -7,13 +7,13 @@
           "interval": [
             {
               "field": "minutes",
-              "minutesInterval": 2
+              "minutesInterval": 15
             }
           ]
         }
       },
       "id": "schedule-facebook-group-autoresponder-poll",
-      "name": "Every 2 Minutes",
+      "name": "Every 15 Minutes",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
@@ -45,7 +45,7 @@
               "neverError": false
             }
           },
-          "timeout": 120000
+          "timeout": 600000
         }
       },
       "id": "call-facebook-group-autoresponder-helper",
@@ -60,7 +60,7 @@
   ],
   "pinData": {},
   "connections": {
-    "Every 2 Minutes": {
+    "Every 15 Minutes": {
       "main": [
         [
           {
@@ -87,7 +87,7 @@
   "settings": {
     "executionOrder": "v1"
   },
-  "versionId": "facebook-group-autoresponder-poll-v1",
+  "versionId": "facebook-group-autoresponder-poll-v2",
   "meta": {
     "templateCredsSetupCompleted": true
   },
