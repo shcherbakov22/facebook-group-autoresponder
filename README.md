@@ -55,6 +55,31 @@ doas systemctl enable --now facebook-autoresponder-helper.service
 curl -s http://127.0.0.1:4020/health
 ```
 
+## Configuration UI
+
+The configuration UI is a local-only editor for `config/config.json`. It does not poll Facebook, post replies, clear state, or expose runtime controls.
+
+Run it manually:
+
+```bash
+cd /home/q/n8n-projects/facebook-group-autoresponder
+npm run config:ui
+```
+
+Then open:
+
+```text
+http://127.0.0.1:4021/
+```
+
+Install/start it as a service:
+
+```bash
+doas cp /home/q/n8n-projects/facebook-group-autoresponder/facebook-config-ui.service /etc/systemd/system/
+doas systemctl daemon-reload
+doas systemctl enable --now facebook-config-ui.service
+```
+
 Import the workflow:
 
 ```bash

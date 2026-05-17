@@ -6,8 +6,6 @@ const path = require('node:path');
 
 const projectRoot = path.resolve(__dirname, '..');
 const configPath = process.env.FB_BOT_CONFIG || path.join(projectRoot, 'config', 'config.json');
-const statePath = process.env.FB_BOT_STATE || path.join(projectRoot, 'state', 'state.json');
-const historyPath = process.env.FB_BOT_HISTORY || path.join(projectRoot, 'state', 'history.jsonl');
 const port = Number(process.env.FB_CONFIG_UI_PORT || 4021);
 
 function readJson(filePath, fallback) {
@@ -127,30 +125,11 @@ function saveConfigFromForm(form) {
   writeJsonAtomic(configPath, config);
 }
 
-function statusSummary() {
-  const state = readJson(statePath, {});
-  const history = (() => {
-    try {
-      return fs.readFileSync(historyPath, 'utf8').trim().split('\n').filter(Boolean).slice(-5).map((line) => JSON.parse(line));
-    } catch {
-      return [];
-    }
-  })();
-  return { state, history };
-}
-
 function renderPage(message = '') {
   const config = readJson(configPath, {});
   const groups = [...(config.groups || [])];
   while (groups.length < 5) groups.push({ id: '', url: '', name: '', enabled: false });
   const rule = firstRule(config);
-  const { state, history } = statusSummary();
-  const lastRun = state.lastRunAt || 'never';
-  const lastError = state.lastError
-    ? (typeof state.lastError === 'string' ? state.lastError : state.lastError.message || JSON.stringify(state.lastError))
-    : '';
-  const repliedCount = Object.keys(state.replied || {}).length;
-  const seenCount = Math.max(0, Object.keys(state.seen || {}).filter((key) => !key.startsWith('__')).length);
 
   return `<!doctype html>
 <html lang="en">
@@ -177,13 +156,9 @@ function renderPage(message = '') {
     .check { display:flex; align-items:center; gap:8px; min-height:38px; color:var(--text); }
     .actions { display:flex; gap:10px; align-items:center; position:sticky; bottom:0; background:rgba(246,247,249,.94); padding:12px 0; }
     button { border:0; border-radius:6px; padding:10px 14px; font:inherit; color:#fff; background:var(--accent); cursor:pointer; }
-    .meta { display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap:12px; }
-    .stat { background:#f9fafb; border:1px solid var(--line); border-radius:6px; padding:10px; }
-    .stat b { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
     .message { margin:0 0 16px; color:var(--accent); font-weight:650; }
     .error { color:var(--danger); overflow-wrap:anywhere; }
-    pre { white-space:pre-wrap; overflow-wrap:anywhere; margin:0; font-size:12px; color:#2f3b49; }
-    @media (max-width: 860px) { .grid, .meta, .group { grid-template-columns:1fr; } header { align-items:flex-start; flex-direction:column; } }
+    @media (max-width: 860px) { .grid, .group { grid-template-columns:1fr; } header { align-items:flex-start; flex-direction:column; } }
   </style>
 </head>
 <body>
@@ -194,16 +169,6 @@ function renderPage(message = '') {
   <main>
     ${message ? `<p class="message">${escapeHtml(message)}</p>` : ''}
     <form method="post" action="save">
-      <section>
-        <h2>Status</h2>
-        <div class="meta">
-          <div class="stat"><b>Last run</b>${escapeHtml(lastRun)}</div>
-          <div class="stat"><b>Replies recorded</b>${escapeHtml(repliedCount)}</div>
-          <div class="stat"><b>Seen posts</b>${escapeHtml(seenCount)}</div>
-          <div class="stat"><b>Last error</b><span class="${lastError ? 'error' : ''}">${escapeHtml(lastError || 'none')}</span></div>
-        </div>
-      </section>
-
       <section>
         <h2>Run Mode</h2>
         <div class="grid">
@@ -254,11 +219,6 @@ function renderPage(message = '') {
           <label>Keyword queries<textarea name="ruleQueries">${escapeHtml(lines(rule.queries))}</textarea></label>
           <label>Regexes<textarea name="ruleRegexes">${escapeHtml(lines(rule.regexes))}</textarea></label>
         </div>
-      </section>
-
-      <section>
-        <h2>Recent Runs</h2>
-        <pre>${escapeHtml(JSON.stringify(history.map((entry) => entry.result || entry), null, 2))}</pre>
       </section>
 
       <div class="actions">
